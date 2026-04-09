@@ -1,0 +1,191 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+## 
+
+List of Base Urls for county property tax assessment data
+
+```{r}
+urls <- list(
+  Ramsey = "https://beacon.schneidercorp.com/application.aspx?app=RamseyCountyMN&PageType=Report&KeyValue=",
+  )
+```
+
+
+```{r}
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(tibble)
+library(stringr)
+
+sourceUrl <- "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer"
+dynamicUrl <- str_c(sourceUrl, "/dynamicLayer/query")
+
+layerJson <- toJSON(
+  list(source = list(type = "mapLayer", mapLayerId = 4)),
+  auto_unbox = TRUE
+)
+
+save_directory <- "ramsey_parcel_chunks"
+
+# arcGIS includes Null for fields that don't exist, coerce those to NA to work in a tibble
+nullToNA <- function(x) {
+  if (is.null(x)) return(NA)
+  x
+}
+
+normalizeAttributes <- function(items) {
+  if (is.null(items) || length(items) == 0) {
+    return(NULL)
+  }
+
+  items <- lapply(items, nullToNA)
+
+  items <- lapply(items, function(x) {
+    if (length(x) == 0) {
+      return(NA)
+    }
+    if (length(x) > 1) { 
+      return(toJSON(x, auto_unbox = TRUE))
+    }
+    x
+  })
+
+  as.data.frame(items, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+getObjectIDs <- function() {
+  response <- POST(
+    dynamicUrl,
+    body = list(
+      layer = layerJson,
+      where = "1=1",
+      returnIdsOnly = "true",
+      f = "json"
+    ),
+    encode = "form"
+  )
+
+  stop_for_status(response)
+
+  rawJson <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
+
+  sort(as.integer(unlist(rawJson$objectIds)))
+}
+
+fetchChunk <- function(chunk_id, out_fields) {
+  response <- POST(
+    dynamicUrl,
+    body = list(
+      layer = layerJson,
+      objectIds = paste(chunk_id, collapse = ","),
+      outFields = out_fields,
+      returnGeometry = "false",
+      f = "json"
+    ),
+    encode = "form"
+  )
+
+  stop_for_status(response)
+
+  data <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
+
+  rows <- lapply(data$features, function(feature) {
+    normalizeAttributes(feature$attributes)
+  })
+  
+  if (is.null(data$features) || length(data$features) == 0) {
+    return(tibble())
+  }
+  
+  rows <- Filter(Negate(is.null), rows)
+
+  if (length(rows) == 0) {
+    return(tibble())
+  }
+  
+  bind_rows(rows)
+}
+
+saveChunk <- function(df, chunk_id, save_directory) {
+  file_path <- file.path(save_directory, sprintf("chunk_%05d.rds", chunk_id))
+  saveRDS(df, file_path)
+  file_path
+}
+
+combineChunks <- function(save_directory) {
+  files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$", full.names = TRUE)
+  
+  bind_rows(lapply(files, readRDS))
+}
+
+fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
+  dir.create(save_directory, showWarnings = FALSE)
+
+  ids <- getObjectIDs()
+  total_ids <- length(ids)
+  chunks <- split(ids, ceiling(seq_along(ids) / batch_size))
+  total_chunks <- length(chunks)
+
+  message("Total parcel IDs: ", total_ids)
+  message("Batch size: ", batch_size)
+  message("Total chunks: ", total_chunks)
+
+  completed_files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$")
+  completed_ids <- as.integer(gsub("^chunk_([0-9]{5})\\.rds$", "\\1", completed_files))
+  completed_ids <- completed_ids[!is.na(completed_ids)]
+
+  already_done_ids <- sum(vapply(
+    seq_along(chunks),
+    function(i) if (i %in% completed_ids) length(chunks[[i]]) else 0L,
+    integer(1)
+  ))
+
+  progress_bar <- txtProgressBar(min = 0, max = total_ids, style = 3)
+  setTxtProgressBar(progress_bar, already_done_ids)
+
+  for (i in seq_along(chunks)) {
+    chunk_file <- file.path(save_directory, sprintf("chunk_%05d.rds", i))
+
+    if (file.exists(chunk_file)) {
+      next
+    }
+
+    message("\nProcessing chunk ", i, " of ", total_chunks)
+
+    chunk_df <- fetchChunk(chunks[[i]], out_fields = out_fields)
+
+    if (!is.null(chunk_df)) {
+      saveChunk(chunk_df, i, save_directory)
+    }
+
+    done_ids <- sum(vapply(
+      seq_along(chunks),
+      function(j) {
+        f <- file.path(save_directory, sprintf("chunk_%05d.rds", j))
+        if (file.exists(f)) length(chunks[[j]]) else 0L
+      },
+      integer(1)
+    ))
+
+    setTxtProgressBar(progress_bar, done_ids)
+  }
+
+  close(progress_bar)
+
+}
+
+# Download parcel IDs
+parcels_df <- fetchParcels(
+  batch_size = 1000,
+  out_fields = "*",
+  save_directory = save_directory
+)
+
+combineChunks(save_directory)
+
+```
