@@ -21,8 +21,7 @@ library(dplyr)
 library(tibble)
 library(stringr)
 
-sourceUrl <- "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer"
-dynamicUrl <- str_c(sourceUrl, "/dynamicLayer/query")
+dynamicUrl <- "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query"
 
 layerJson <- toJSON(
   list(source = list(type = "mapLayer", mapLayerId = 4)),
