@@ -21,26 +21,32 @@ library(dplyr)
 library(tibble)
 library(stringr)
 
+# Base url for the arcgis api for ramsey county
 dynamicUrl <- "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query"
 
+# Construct a JSON object with the layer of interest on the arcgis map
 layerJson <- toJSON(
   list(source = list(type = "mapLayer", mapLayerId = 4)),
   auto_unbox = TRUE
 )
 
+# Directory to save the data to
 save_directory <- "ramsey_parcel_chunks"
 
-# arcGIS includes Null for fields that don't exist, coerce those to NA to work in a tibble
+# ArcGIS includes Null for fields that don't exist, coerce those to NA to work in a tibble
 nullToNA <- function(x) {
   if (is.null(x)) return(NA)
   x
 }
 
+# The JSON that is returned from the website is super messy and kept giving errors, this is to convert it all to the same format to reduce errors. Not all of this is strictly necessary as I kept adding things until it worked but it works now so I am not going to change it. 
 normalizeAttributes <- function(items) {
+  # Return NULL if the JSON object doesn't exist or is NULL in any way
   if (is.null(items) || length(items) == 0) {
     return(NULL)
   }
 
+  # Converts messy JSON to a cleaner format: removing names, converting NULL values to NAs, flattening, and cooercing to characters anything that isn't NA
   scalarize <- function(x) {
     if (is.null(x) || length(x) == 0) {
       return(NA_character_)
@@ -57,31 +63,40 @@ normalizeAttributes <- function(items) {
     return(toJSON(x, auto_unbox = TRUE, null = "null"))
   }
 
+  # Apply the scalarize function to each of the nested JSON items in the items array
   out <- lapply(items, scalarize)
 
+  # Convert the flattened and cleaned JSON to a tibble  
   as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+# Gets all of the IDS in the requested layer (all of the different properties)
 getObjectIDs <- function() {
+  # Sends a request to the arcgis API for every ID from layer 4 and returns as a JSON object
   response <- POST(
     dynamicUrl,
     body = list(
-      layer = layerJson,
+      layer = layerJson, 
       where = "1=1",
       returnIdsOnly = "true",
       f = "json"
     ),
     encode = "form"
   )
+  
+# Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
+  stop_for_status(response) 
+  
+  # Convert from JSON to an R object
+  idsList <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
 
-  stop_for_status(response)
-
-  rawJson <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
-
-  sort(as.integer(unlist(rawJson$objectIds)))
+  # Return a sorted array of the object IDs
+  sort(as.integer(unlist(idsList$objectIds)))
 }
 
+# Fetch a chunk of object IDs (each chunk contains an array of object IDs)
 fetchChunk <- function(chunk_id, out_fields) {
+  # Sends a request to the arcgis API to return the JSON data for all of the specified object IDs 
   response <- POST(
     dynamicUrl,
     body = list(
@@ -94,79 +109,108 @@ fetchChunk <- function(chunk_id, out_fields) {
     encode = "form"
   )
 
+# Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
   stop_for_status(response)
 
+  # Convert from JSON to an R object
   data <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
 
+  # Convert the returned object to a flat tibble
   rows <- lapply(data$features, function(feature) {
     normalizeAttributes(feature$attributes)
   })
   
+  # Sometimes the server returns empty objects if an object ID doesn't actually exist
   if (is.null(data$features) || length(data$features) == 0) {
     return(tibble())
   }
   
+  # Filter out rows that are empty
   rows <- Filter(Negate(is.null), rows)
 
+  # If all the rows were empty return an empty tibble
   if (length(rows) == 0) {
     return(tibble())
   }
   
+  # Combine all the rows into a data frame and return it
   bind_rows(rows)
 }
 
+# Save a tibble to memory to allow for acontinuous data collection
 saveChunk <- function(df, chunk_id, save_directory) {
+  # File path to save
   file_path <- file.path(save_directory, sprintf("chunk_%05d.rds", chunk_id))
+  
+  # Save the file as a .rds file
   saveRDS(df, file_path)
+  
+  # Return the file path of the saved file
   file_path
 }
 
 combineChunks <- function(save_directory) {
+  # Find all the files in the specified save directory
   files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$", full.names = TRUE)
   
+  # Combine the files into 1 data frame
   bind_rows(lapply(files, readRDS))
 }
 
 fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
+  # Create a directory, showWarnings = FALSE makes it not show an error if the directory already exists and simply move on
   dir.create(save_directory, showWarnings = FALSE)
 
   ids <- getObjectIDs()
   total_ids <- length(ids)
-  chunks <- split(ids, ceiling(seq_along(ids) / batch_size))
+  
+  # Split the object IDs into chunks. Arcgis allows for processing of 1000 object IDs in parallel
+  chunks <- split(ids, ceiling(seq_along(ids) / batch_size)) 
   total_chunks <- length(chunks)
 
+  # Print some information about the data set size
   message("Total parcel IDs: ", total_ids)
   message("Batch size: ", batch_size)
   message("Total chunks: ", total_chunks)
 
+  # Find the completed chunks so that data isn't collected twice
   completed_files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$")
   completed_ids <- as.integer(gsub("^chunk_([0-9]{5})\\.rds$", "\\1", completed_files))
   completed_ids <- completed_ids[!is.na(completed_ids)]
 
+  # Find the completed IDs so that data isn't collected twice
   already_done_ids <- sum(vapply(
     seq_along(chunks),
     function(i) if (i %in% completed_ids) length(chunks[[i]]) else 0L,
     integer(1)
   ))
 
+# Create a progress bar to show how much of the data has been collected (mainly to make sure it is actually working as data collection takes a long time and I want to see if something is happening and it isn't stuck with some error)
   progress_bar <- txtProgressBar(min = 0, max = total_ids, style = 3)
   setTxtProgressBar(progress_bar, already_done_ids)
 
+  # Loop through all of the chunks in the chunks object
   for (i in seq_along(chunks)) {
+    # Create the file if it doesn't exist
     chunk_file <- file.path(save_directory, sprintf("chunk_%05d.rds", i))
 
+    # If the file does exist move along so not overwriting data
     if (file.exists(chunk_file)) {
       next
     }
 
+    # Part of the progress bar
     message("\nProcessing chunk ", i, " of ", total_chunks)
 
+    # Fetch the chunk
     chunk_df <- fetchChunk(chunks[[i]], out_fields = out_fields)
 
+    # If the fetch was successful and returned data save it to file
     if (!is.null(chunk_df)) {
       saveChunk(chunk_df, i, save_directory)
     }
 
+    # Part of the progress bar
     done_ids <- sum(vapply(
       seq_along(chunks),
       function(j) {
@@ -175,19 +219,21 @@ fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
       },
       integer(1)
     ))
-
+    
+    # Part of the progress bar
     setTxtProgressBar(progress_bar, done_ids)
   }
-
+  
+  # End the progress bar
   close(progress_bar)
 
 }
 
-# Download parcel IDs
+# Main function to actually download all of the parcel IDs
 parcels_df <- fetchParcels(
-  batch_size = 1000,
-  out_fields = "*",
-  save_directory = save_directory
+  batch_size = 1000, # 1000 is the max value allowed by arcgis, can be changed to be lower for testing
+  out_fields = "*", # Delimtiter value
+  save_directory = save_directory # Directory to save items
 )
 
 combineChunks(save_directory)
