@@ -4,14 +4,19 @@ format: html
 editor: visual
 ---
 
-## 
-
 List of Base Urls for county property tax assessment data
 
 ```{r}
 urls <- list(
-  Ramsey = "https://beacon.schneidercorp.com/application.aspx?app=RamseyCountyMN&PageType=Report&KeyValue=",
-  )
+  ramsey   = list(url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", layer = 4),
+  aitkin   = list(url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/0/query", layer = 4),
+  anoka    = list(url = "https://gisservices.co.anoka.mn.us/anoka_gis/rest/services/Parcel_WAB/MapServer/dynamicLayer/query", layer = 4),
+  becker   = list(url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", layer = 4),
+  beltrami = list(url = "https://arcgis.co.beltrami.mn.us/arcgis/rest/services/BeltramiBasemap2/MapServer/8/query", layer = 4),
+  benton   = list(url = "https://services.arcgis.com/cHtpFLI4WlqULV8k/arcgis/rest/services/Benton_Co_Data/FeatureServer/0/query", layer = 4),
+  bigstone = list(url = "https://gis.bigstonecounty.gov/arcgis/rest/services/Assessor/TaxParcels/MapServer/0/query", layer = 4),
+  carlton  = list(url = "https://gis.co.carlton.mn.us/arcgis/rest/services/AGOL/Mobile_Parcel_Viewer/MapServer/dynamicLayer/query", layer = 0)
+)
 ```
 
 ```{r}
@@ -20,18 +25,6 @@ library(jsonlite)
 library(dplyr)
 library(tibble)
 library(stringr)
-
-# Base url for the arcgis api for ramsey county
-dynamicUrl <- "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query"
-
-# Construct a JSON object with the layer of interest on the arcgis map
-layerJson <- toJSON(
-  list(source = list(type = "mapLayer", mapLayerId = 4)),
-  auto_unbox = TRUE
-)
-
-# Directory to save the data to
-save_directory <- "ramsey_parcel_chunks"
 
 # ArcGIS includes Null for fields that don't exist, coerce those to NA to work in a tibble
 nullToNA <- function(x) {
@@ -71,7 +64,7 @@ normalizeAttributes <- function(items) {
 }
 
 # Gets all of the IDS in the requested layer (all of the different properties)
-getObjectIDs <- function() {
+getObjectIDs <- function(dynamicUrl, layerJson) {
   # Sends a request to the arcgis API for every ID from layer 4 and returns as a JSON object
   response <- POST(
     dynamicUrl,
@@ -95,19 +88,21 @@ getObjectIDs <- function() {
 }
 
 # Fetch a chunk of object IDs (each chunk contains an array of object IDs)
-fetchChunk <- function(chunk_id, out_fields) {
+fetchChunk <- function(dynamicUrl, chunk_id, out_fields, layerJson) {
   # Sends a request to the arcgis API to return the JSON data for all of the specified object IDs 
-  response <- POST(
-    dynamicUrl,
-    body = list(
-      layer = layerJson,
-      objectIds = paste(chunk_id, collapse = ","),
-      outFields = out_fields,
-      returnGeometry = "false",
-      f = "json"
-    ),
-    encode = "form"
+  body <- list(
+    objectIds = paste(chunk_id, collapse = ","),
+    outFields = out_fields,
+    returnGeometry = "false",
+    f = "json"
   )
+  
+  # If the URL is a dynamic url then a layer needs to be specified
+  if (str_detect("dynamicLayer", dynamicUrl)) {
+    body$layer <- layerJson
+  }
+  
+  response <- POST(dynamicUrl, body = body, encode = "form")
 
 # Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
   stop_for_status(response)
@@ -157,11 +152,11 @@ combineChunks <- function(save_directory) {
   bind_rows(lapply(files, readRDS))
 }
 
-fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
+fetchParcels <- function(url, batch_size = 1000, out_fields = "*", save_directory, layerJson) {
   # Create a directory, showWarnings = FALSE makes it not show an error if the directory already exists and simply move on
   dir.create(save_directory, showWarnings = FALSE)
 
-  ids <- getObjectIDs()
+  ids <- getObjectIDs(url, layerJson)
   total_ids <- length(ids)
   
   # Split the object IDs into chunks. Arcgis allows for processing of 1000 object IDs in parallel
@@ -203,7 +198,7 @@ fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
     message("\nProcessing chunk ", i, " of ", total_chunks)
 
     # Fetch the chunk
-    chunk_df <- fetchChunk(chunks[[i]], out_fields = out_fields)
+    chunk_df <- fetchChunk(url, chunks[[i]], out_fields = out_fields, layerJson)
 
     # If the fetch was successful and returned data save it to file
     if (!is.null(chunk_df)) {
@@ -230,11 +225,22 @@ fetchParcels <- function(batch_size = 1000, out_fields = "*", save_directory) {
 }
 
 # Main function to actually download all of the parcel IDs
-parcels_df <- fetchParcels(
-  batch_size = 1000, # 1000 is the max value allowed by arcgis, can be changed to be lower for testing
-  out_fields = "*", # Delimtiter value
-  save_directory = save_directory # Directory to save items
-)
+for (key in names(urls)) {
+  
+  # Construct a JSON object with the layer of interest on the arcgis map
+  layerJson <- toJSON(
+    list(source = list(type = "mapLayer", mapLayerId = urls[[key]][[2]])),
+    auto_unbox = TRUE
+  )
+  
+  parcels_df <- fetchParcels(
+    urls[[key]][[1]],
+    batch_size = 1000, # 1000 is the max value allowed by arcgis, can be changed to be lower for testing
+    out_fields = "*", # Delimtiter value
+    save_directory = str_c("Data/",key,"_parcel_chunks"), # Directory to save items
+    layerJson
+  )
+}
 
 combineChunks(save_directory)
 
