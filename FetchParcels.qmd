@@ -4,18 +4,24 @@ format: html
 editor: visual
 ---
 
-List of Base Urls for county property tax assessment data
+List of Base Urls for county property data
 
 ```{r}
 urls <- list(
   ramsey   = list(url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", layer = 4),
-  aitkin   = list(url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/0/query", layer = 4),
+  aitkin   = list(url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/0/query", layer = -1),
   anoka    = list(url = "https://gisservices.co.anoka.mn.us/anoka_gis/rest/services/Parcel_WAB/MapServer/dynamicLayer/query", layer = 4),
-  becker   = list(url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", layer = 4),
-  beltrami = list(url = "https://arcgis.co.beltrami.mn.us/arcgis/rest/services/BeltramiBasemap2/MapServer/8/query", layer = 4),
-  benton   = list(url = "https://services.arcgis.com/cHtpFLI4WlqULV8k/arcgis/rest/services/Benton_Co_Data/FeatureServer/0/query", layer = 4),
-  bigstone = list(url = "https://gis.bigstonecounty.gov/arcgis/rest/services/Assessor/TaxParcels/MapServer/0/query", layer = 4),
-  carlton  = list(url = "https://gis.co.carlton.mn.us/arcgis/rest/services/AGOL/Mobile_Parcel_Viewer/MapServer/dynamicLayer/query", layer = 0)
+  becker   = list(url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", layer = -1),
+  beltrami = list(url = "https://arcgis.co.beltrami.mn.us/arcgis/rest/services/BeltramiBasemap2/MapServer/8/query", layer = -1),
+  benton   = list(url = "https://services.arcgis.com/cHtpFLI4WlqULV8k/arcgis/rest/services/Benton_Co_Data/FeatureServer/0/query", layer = -1),
+  bigstone = list(url = "https://gis.bigstonecounty.gov/arcgis/rest/services/Assessor/TaxParcels/MapServer/0/query", layer = -1),
+  carlton  = list(url = "https://gis.co.carlton.mn.us/arcgis/rest/services/AGOL/Mobile_Parcel_Viewer/MapServer/dynamicLayer/query", layer = 0),
+  carver = list(url = "https://gis.co.carver.mn.us/arcgis_ea/rest/services/Specialty/CC_Public_Parcel_App_Test/MapServer/33/query", layer = -1),
+  chippewa = list(url = "https://gis.chippewa.mn/arcgis/rest/services/Assessor/TaxParcels/FeatureServer/0/query", layer = -1), 
+  chisago = list(url = "https://gis.chisagocountymn.gov/arcgis/rest/services/AssessmentInformation/TaxParcels/MapServer/0/query", layer = -1),
+  clay = list(url = "https://map.claycountymn.gov/arcgis/rest/services/CLAY_LINK/MapServer/3/query", layer = -1),
+  clearwater = list(url = "https://map.co.clearwater.mn.us/arcgis/rest/services/Clearwater/ClearwaterAll_LINK/MapServer/4/query", layer = -1),
+  
 )
 ```
 
@@ -88,7 +94,7 @@ getObjectIDs <- function(dynamicUrl, layerJson) {
 }
 
 # Fetch a chunk of object IDs (each chunk contains an array of object IDs)
-fetchChunk <- function(dynamicUrl, chunk_id, out_fields, layerJson) {
+fetchChunk <- function(url, chunk_id, out_fields, layerJson) {
   # Sends a request to the arcgis API to return the JSON data for all of the specified object IDs 
   body <- list(
     objectIds = paste(chunk_id, collapse = ","),
@@ -98,11 +104,11 @@ fetchChunk <- function(dynamicUrl, chunk_id, out_fields, layerJson) {
   )
   
   # If the URL is a dynamic url then a layer needs to be specified
-  if (str_detect("dynamicLayer", dynamicUrl)) {
+  if (str_detect("dynamicLayer", url)) {
     body$layer <- layerJson
   }
   
-  response <- POST(dynamicUrl, body = body, encode = "form")
+  response <- POST(url, body = body, encode = "form")
 
 # Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
   stop_for_status(response)
@@ -241,7 +247,5 @@ for (key in names(urls)) {
     layerJson
   )
 }
-
-combineChunks(save_directory)
 
 ```
