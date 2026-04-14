@@ -1,14 +1,22 @@
 ---
-title: "Untitled"
-format: html
+title: "Project 2"
+format: pdf
 editor: visual
 ---
 
-List of Base Urls for county property data
 
+Libraries Used
+```{r}
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(tibble)
+library(stringr)
+```
+
+List of Base Urls for county property data
 ```{r}
 urls <- list(
-  ramsey   = list(url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", layer = 4),
   aitkin   = list(url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/0/query", layer = -1),
   anoka    = list(url = "https://gisservices.co.anoka.mn.us/anoka_gis/rest/services/Parcel_WAB/MapServer/dynamicLayer/query", layer = 4),
   becker   = list(url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", layer = -1),
@@ -21,17 +29,24 @@ urls <- list(
   chisago = list(url = "https://gis.chisagocountymn.gov/arcgis/rest/services/AssessmentInformation/TaxParcels/MapServer/0/query", layer = -1),
   clay = list(url = "https://map.claycountymn.gov/arcgis/rest/services/CLAY_LINK/MapServer/3/query", layer = -1),
   clearwater = list(url = "https://map.co.clearwater.mn.us/arcgis/rest/services/Clearwater/ClearwaterAll_LINK/MapServer/4/query", layer = -1),
-  
+  cook = list(url = "https://services.arcgis.com/L3KwVADPEG6iD24f/arcgis/rest/services/Tax_Parcel_Layer_(Current)/FeatureServer/0/query",layer = -1),
+  crowwing = list(url = "https://gis.crowwing.us/cwc_external_main/rest/services/Link_Public/MapServer/0/query",layer = -1),
+  douglas = list(url = "https://services2.arcgis.com/CfhoRi2v351nuUH7/arcgis/rest/services/DC_OL_DCPIAdvanced_AGOLX/FeatureServer/6/query",layer = -1),
+  hennepin = list(url = "https://gis.hennepin.us/arcgis/rest/services/Maps/PROPERTY/MapServer/0/query",layer = -1),
+  hubbard = list(url = "https://gis.co.hubbard.mn.us/arcgis/rest/services/ParcelViewer/Hubbard_County_Parcels_Features/MapServer/41/query",layer = -1),
+  isanti = list(url = "https://gis.co.isanti.mn.us/arcgis/rest/services/LandRecords/TaxParcels_Public/MapServer/3/query",layer = -1),
+  itasca = list(url = "https://maps-test.co.itasca.mn.us/arcgis/rest/services/WAB_Maps/PublicOperationLayers/MapServer/30/query",layer = -1),
+  koochiching = list(url = "https://services3.arcgis.com/8mdusDCY0WncdJVw/arcgis/rest/services/Cadastre_Reference/FeatureServer/0/query",layer = -1),
+  lyon = list(url = "https://services.arcgis.com/WSCKzjfnubMgUOk8/arcgis/rest/services/Parcels/FeatureServer/0/query", layer = -1), 
+  millelacs = list(url = "https://gis.co.mille-lacs.mn.us/arcgis/rest/services/MilleLacs_Public_101/MapServer/35/query",layer = -1),
+  olmsted = list(url = "https://gweb01.co.olmsted.mn.us/arcgis/rest/services/Parcels_Addressing/MapServer/2/query",layer = -1),
+  ottertail = list(url = "https://services3.arcgis.com/Pg1yLLk3jMuhxBKI/arcgis/rest/services/ParcelView/FeatureServer/25/query", layer = -1),
+  ramsey   = list(url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", layer = 4)
 )
 ```
 
+Helper Functions
 ```{r}
-library(httr)
-library(jsonlite)
-library(dplyr)
-library(tibble)
-library(stringr)
-
 # ArcGIS includes Null for fields that don't exist, coerce those to NA to work in a tibble
 nullToNA <- function(x) {
   if (is.null(x)) return(NA)
@@ -68,7 +83,10 @@ normalizeAttributes <- function(items) {
   # Convert the flattened and cleaned JSON to a tibble  
   as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
 }
+```
 
+Scraping Functions
+```{r}
 # Gets all of the IDS in the requested layer (all of the different properties)
 getObjectIDs <- function(dynamicUrl, layerJson) {
   # Sends a request to the arcgis API for every ID from layer 4 and returns as a JSON object
@@ -158,7 +176,7 @@ combineChunks <- function(save_directory) {
   bind_rows(lapply(files, readRDS))
 }
 
-fetchParcels <- function(url, batch_size = 1000, out_fields = "*", save_directory, layerJson) {
+fetchParcels <- function(key, url, batch_size = 1000, out_fields = "*", save_directory, layerJson) {
   # Create a directory, showWarnings = FALSE makes it not show an error if the directory already exists and simply move on
   dir.create(save_directory, showWarnings = FALSE)
 
@@ -170,6 +188,7 @@ fetchParcels <- function(url, batch_size = 1000, out_fields = "*", save_director
   total_chunks <- length(chunks)
 
   # Print some information about the data set size
+  message("County: ", key)
   message("Total parcel IDs: ", total_ids)
   message("Batch size: ", batch_size)
   message("Total chunks: ", total_chunks)
@@ -179,7 +198,7 @@ fetchParcels <- function(url, batch_size = 1000, out_fields = "*", save_director
   completed_ids <- as.integer(gsub("^chunk_([0-9]{5})\\.rds$", "\\1", completed_files))
   completed_ids <- completed_ids[!is.na(completed_ids)]
 
-  # Find the completed IDs so that data isn't collected twice
+  # Find the completed IDs to add to progress bar
   already_done_ids <- sum(vapply(
     seq_along(chunks),
     function(i) if (i %in% completed_ids) length(chunks[[i]]) else 0L,
@@ -229,7 +248,10 @@ fetchParcels <- function(url, batch_size = 1000, out_fields = "*", save_director
   close(progress_bar)
 
 }
+```
 
+Main Loop
+```{r}
 # Main function to actually download all of the parcel IDs
 for (key in names(urls)) {
   
@@ -240,6 +262,7 @@ for (key in names(urls)) {
   )
   
   parcels_df <- fetchParcels(
+    key,
     urls[[key]][[1]],
     batch_size = 1000, # 1000 is the max value allowed by arcgis, can be changed to be lower for testing
     out_fields = "*", # Delimtiter value
@@ -247,5 +270,4 @@ for (key in names(urls)) {
     layerJson
   )
 }
-
 ```
