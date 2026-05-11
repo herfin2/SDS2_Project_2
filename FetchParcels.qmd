@@ -609,14 +609,68 @@ arcgisPolygonToSF <- function(geometry_json) {
   st_polygon(rings)
 }
 
-geoms <- lapply(aitkin_parcels_with_geometry$geometry_json, arcgisPolygonToSF)
-
-valid <- !sapply(geoms, is.null)
-
-parcels_sf <- st_sf(
-  aitkin_parcels_with_geometry[valid, ],
-  geometry = st_sfc(geoms[valid], crs = 4326)
+files <- list.files(
+  path = "Data2/",
+  pattern = "\\.rds$",
+  full.names = TRUE
 )
+
+owner_fields <- c(
+  "TAO_NAME",
+  "OWNER",
+  "CurOwnerName",
+  "OWNER_NAME",
+  "OWNERNAME",
+  "PROP_OWNER",
+  "OWNERNAME1",
+  "TAXPAYER_NAME1",
+  "TAXPAYER_NAME",
+  "OWNAME",
+  "TAX_NAME",
+  "Ownname",
+  "dbo.tblManatronParcelInfo.TaxName",
+  "OWNNAME",
+  "OWNER_NM",
+  "PINAME1",
+  "OWNERNME1",
+  "Full_Name",
+  "OwnerName1",
+  "OwnerName"
+)
+
+for (file in files) {
+
+  dat <- readRDS(file)
+  
+  # Find matching owner column
+  owner_col <- intersect(owner_fields, names(dat))
+
+  # Standardize to OWNER_NAME
+  if (length(owner_col) > 0) {
+    dat <- dat |>
+      rename(OWNER_NAME = all_of(owner_col[1]))
+  } else {
+    dat$OWNER_NAME <- NA_character_
+  }
+
+  geoms <- lapply(dat$geometry_json, arcgisPolygonToSF)
+
+  valid <- !sapply(geoms, is.null)
+
+  parcels_sf <- st_sf(
+    dat[valid, ],
+    geometry = st_sfc(geoms[valid], crs = 4326)
+  )
+
+  # County Name
+  file_prefix <- sub("_.*$", "", basename(file))
+  
+  # Save individually
+  saveRDS(
+    parcels_sf,
+    file = file.path("Data2/", paste0(file_prefix, "_parcels_sf.rds"))
+  )
+}
 
 parcels_sf |>
   select(TAO_NAME, geometry) |>
@@ -628,6 +682,14 @@ parcels_sf |>
 labels <- lapply(aitkin_parcels_with_geometry$TAO_NAME, HTML)
 
 leaflet(parcels_sf) |>
+  addTiles() |>
+  addPolygons(
+    label = labels
+  )
+
+labels <- lapply(bigstone_parcels_sf$OWNER_NAME, HTML)
+
+leaflet(bigstone_parcels_sf) |>
   addTiles() |>
   addPolygons(
     label = labels
