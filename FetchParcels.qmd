@@ -12,36 +12,93 @@ library(jsonlite)
 library(dplyr)
 library(tibble)
 library(stringr)
+library(sf)
+library(leaflet)
+library(htmlwidgets)
+library(maps)
+library(htmltools)
+library(glue)
 ```
 
 List of Base Urls for county property data
 ```{r}
 urls <- list(
-  aitkin   = list(url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/0/query", layer = -1),
-  anoka    = list(url = "https://gisservices.co.anoka.mn.us/anoka_gis/rest/services/Parcel_WAB/MapServer/dynamicLayer/query", layer = 4),
-  becker   = list(url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", layer = -1),
-  beltrami = list(url = "https://arcgis.co.beltrami.mn.us/arcgis/rest/services/BeltramiBasemap2/MapServer/8/query", layer = -1),
-  benton   = list(url = "https://services.arcgis.com/cHtpFLI4WlqULV8k/arcgis/rest/services/Benton_Co_Data/FeatureServer/0/query", layer = -1),
-  bigstone = list(url = "https://gis.bigstonecounty.gov/arcgis/rest/services/Assessor/TaxParcels/MapServer/0/query", layer = -1),
-  carlton  = list(url = "https://gis.co.carlton.mn.us/arcgis/rest/services/AGOL/Mobile_Parcel_Viewer/MapServer/dynamicLayer/query", layer = 0),
-  carver = list(url = "https://gis.co.carver.mn.us/arcgis_ea/rest/services/Specialty/CC_Public_Parcel_App_Test/MapServer/33/query", layer = -1),
-  chippewa = list(url = "https://gis.chippewa.mn/arcgis/rest/services/Assessor/TaxParcels/FeatureServer/0/query", layer = -1), 
-  chisago = list(url = "https://gis.chisagocountymn.gov/arcgis/rest/services/AssessmentInformation/TaxParcels/MapServer/0/query", layer = -1),
-  clay = list(url = "https://map.claycountymn.gov/arcgis/rest/services/CLAY_LINK/MapServer/3/query", layer = -1),
-  clearwater = list(url = "https://map.co.clearwater.mn.us/arcgis/rest/services/Clearwater/ClearwaterAll_LINK/MapServer/4/query", layer = -1),
-  cook = list(url = "https://services.arcgis.com/L3KwVADPEG6iD24f/arcgis/rest/services/Tax_Parcel_Layer_(Current)/FeatureServer/0/query",layer = -1),
-  crowwing = list(url = "https://gis.crowwing.us/cwc_external_main/rest/services/Link_Public/MapServer/0/query",layer = -1),
-  douglas = list(url = "https://services2.arcgis.com/CfhoRi2v351nuUH7/arcgis/rest/services/DC_OL_DCPIAdvanced_AGOLX/FeatureServer/6/query",layer = -1),
-  hennepin = list(url = "https://gis.hennepin.us/arcgis/rest/services/Maps/PROPERTY/MapServer/0/query",layer = -1),
-  hubbard = list(url = "https://gis.co.hubbard.mn.us/arcgis/rest/services/ParcelViewer/Hubbard_County_Parcels_Features/MapServer/41/query",layer = -1),
-  isanti = list(url = "https://gis.co.isanti.mn.us/arcgis/rest/services/LandRecords/TaxParcels_Public/MapServer/3/query",layer = -1),
-  itasca = list(url = "https://maps-test.co.itasca.mn.us/arcgis/rest/services/WAB_Maps/PublicOperationLayers/MapServer/30/query",layer = -1),
-  koochiching = list(url = "https://services3.arcgis.com/8mdusDCY0WncdJVw/arcgis/rest/services/Cadastre_Reference/FeatureServer/0/query",layer = -1),
-  lyon = list(url = "https://services.arcgis.com/WSCKzjfnubMgUOk8/arcgis/rest/services/Parcels/FeatureServer/0/query", layer = -1), 
-  millelacs = list(url = "https://gis.co.mille-lacs.mn.us/arcgis/rest/services/MilleLacs_Public_101/MapServer/35/query",layer = -1),
-  olmsted = list(url = "https://gweb01.co.olmsted.mn.us/arcgis/rest/services/Parcels_Addressing/MapServer/2/query",layer = -1),
-  ottertail = list(url = "https://services3.arcgis.com/Pg1yLLk3jMuhxBKI/arcgis/rest/services/ParcelView/FeatureServer/25/query", layer = -1),
-  ramsey   = list(url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", layer = 4)
+  aitkin      = list(
+    url = "https://gisweb.co.aitkin.mn.us/arcgis/rest/services/ParcelTaxData/MapServer/dynamicLayer/query", 
+    layer = 0),
+  anoka       = list(
+    url = "https://gisservices.co.anoka.mn.us/anoka_gis/rest/services/Parcels/MapServer/dynamicLayer/query", 
+    layer = 0),
+  becker      = list(
+    url = "https://gis-server.co.becker.mn.us/arcgis/rest/services/BECKER_INTERNAL_101/MapServer/33/query", 
+    layer = -1),
+  beltrami    = list(
+    url = "https://arcgis.co.beltrami.mn.us/arcgis/rest/services/BeltramiBasemap2/MapServer/8/query", 
+    layer = -1),
+  benton      = list(
+    url = "https://services.arcgis.com/cHtpFLI4WlqULV8k/arcgis/rest/services/Benton_Co_Data/FeatureServer/0/query", 
+    layer = -1),
+  bigstone    = list(
+    url = "https://gis.bigstonecounty.gov/arcgis/rest/services/Assessor/TaxParcels/MapServer/0/query", 
+    layer = -1),
+  carlton     = list(
+    url = "https://gis.co.carlton.mn.us/arcgis/rest/services/AGOL/Mobile_Parcel_Viewer/MapServer/dynamicLayer/query", 
+    layer = 0),
+  carver = list(
+  url = "https://gis.co.carver.mn.us/arcgis_ea/rest/services/Specialty/CC_Public_Parcel_App_Test/MapServer/33/query",
+  layer = -1),
+  chippewa    = list(
+    url = "https://gis.chippewa.mn/arcgis/rest/services/Assessor/TaxParcels/FeatureServer/0/query", 
+    layer = -1), 
+  chisago     = list(
+    url = "https://gis.chisagocountymn.gov/arcgis/rest/services/AssessmentInformation/TaxParcels/MapServer/0/query", 
+    layer = -1),
+  clay        = list(
+    url = "https://map.claycountymn.gov/arcgis/rest/services/CLAY_LINK/MapServer/dynamicLayer/query", 
+    layer = 3),
+  clearwater  = list(
+    url = "https://map.co.clearwater.mn.us/arcgis/rest/services/Clearwater/ClearwaterAll_LINK/MapServer/dynamicLayer/query", 
+    layer = 4),
+  cook        = list(
+    url = "https://services.arcgis.com/L3KwVADPEG6iD24f/arcgis/rest/services/Tax_Parcel_Layer_(Current)/FeatureServer/0/query",
+    layer = -1),
+  crowwing    = list(
+    url = "https://gis.crowwing.us/cwc_external_main/rest/services/Link_Public/MapServer/dynamicLayer/query",
+    layer = 0),
+  douglas = list(
+  url = "https://services3.arcgis.com/Pg1yLLk3jMuhxBKI/arcgis/rest/services/ParcelView/FeatureServer/25/query",
+  layer = -1
+),
+  hennepin    = list(
+    url = "https://gis.hennepin.us/arcgis/rest/services/Maps/PROPERTY/MapServer/0/query",
+    layer = -1),
+  hubbard     = list(
+    url = "https://gis.co.hubbard.mn.us/arcgis/rest/services/ParcelViewer/Hubbard_County_Parcels_Features/MapServer/41/query",
+    layer = -1),
+  isanti      = list(
+    url = "https://gis.co.isanti.mn.us/arcgis/rest/services/LandRecords/TaxParcels_Public/MapServer/3/query",
+    layer = -1),
+  itasca      = list(
+    url = "https://maps-test.co.itasca.mn.us/arcgis/rest/services/WAB_Maps/PublicOperationLayers/MapServer/30/query",
+    layer = -1),
+  koochiching = list(
+    url = "https://services3.arcgis.com/8mdusDCY0WncdJVw/arcgis/rest/services/Cadastre_Reference/FeatureServer/0/query",
+    layer = -1),
+  lyon        = list(
+    url = "https://services.arcgis.com/WSCKzjfnubMgUOk8/arcgis/rest/services/Parcels/FeatureServer/0/query", 
+    layer = -1), 
+  millelacs   = list(
+    url = "https://gis.co.mille-lacs.mn.us/arcgis/rest/services/MilleLacs_Public_101/MapServer/35/query",
+    layer = -1),
+  olmsted     = list(
+    url = "https://gweb01.co.olmsted.mn.us/arcgis/rest/services/Parcels_Addressing/MapServer/2/query",
+    layer = -1),
+  ottertail   = list(
+    url = "https://services3.arcgis.com/Pg1yLLk3jMuhxBKI/arcgis/rest/services/ParcelView/FeatureServer/25/query", 
+    layer = -1),
+  ramsey      = list(
+    url = "https://maps.co.ramsey.mn.us/arcgis/rest/services/MapRamsey/MapRamseyOperational_AttributedParcel/MapServer/dynamicLayer/query", 
+    layer = 4)
 )
 ```
 
@@ -87,63 +144,116 @@ normalizeAttributes <- function(items) {
 
 Scraping Functions
 ```{r}
-# Gets all of the IDS in the requested layer (all of the different properties)
-getObjectIDs <- function(dynamicUrl, layerJson) {
-  # Sends a request to the arcgis API for every ID from layer 4 and returns as a JSON object
-  response <- POST(
-    dynamicUrl,
-    body = list(
-      layer = layerJson, 
-      where = "1=1",
-      returnIdsOnly = "true",
-      f = "json"
-    ),
-    encode = "form"
+# Checks whether the requested URL is a dynamic layer query or a direct layer query
+isDynamicQuery <- function(url) {
+  str_detect(url, "dynamicLayer/query")
+}
+
+# Constructs a JSON object with the layer of interest on the arcgis map
+makeLayerJson <- function(layer_id) {
+  toJSON(
+    list(source = list(type = "mapLayer", mapLayerId = layer_id)),
+    auto_unbox = TRUE
   )
-  
-# Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
-  stop_for_status(response) 
-  
+}
+
+# Gets all of the IDS in the requested layer (all of the different properties)
+getObjectIDs <- function(url, layerJson = NULL) {
+  # Build the request body. Direct layer queries do not use the layer JSON object
+  body <- list(
+    where = "1=1",
+    returnIdsOnly = "true",
+    f = "json"
+  )
+
+  # Dynamic layer queries require the layer JSON object
+  if (isDynamicQuery(url)) {
+    body$layer <- layerJson
+  }
+
+  # Sends a request to the arcgis API for every ID and returns as a JSON object
+  response <- POST(
+    url,
+    body = body,
+    encode = "form",
+    timeout(120),
+    user_agent("Mozilla/5.0")
+  )
+
+  # Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
+  stop_for_status(response)
+
   # Convert from JSON to an R object
   idsList <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
+
+  # If ArcGIS returns an error, stop and print that message
+  if (!is.null(idsList$error)) {
+    stop(idsList$error$message)
+  }
 
   # Return a sorted array of the object IDs
   sort(as.integer(unlist(idsList$objectIds)))
 }
 
-# Fetch a chunk of object IDs (each chunk contains an array of object IDs)
-fetchChunk <- function(url, chunk_id, out_fields, layerJson) {
-  # Sends a request to the arcgis API to return the JSON data for all of the specified object IDs 
+# Fetch a chunk of object IDs, including geometry, and convert it to a flat data frame
+fetchChunk <- function(url, chunk_id, out_fields = "*", layerJson = NULL) {
+  # Build the request body. Direct layer queries do not use the layer JSON object
   body <- list(
     objectIds = paste(chunk_id, collapse = ","),
     outFields = out_fields,
-    returnGeometry = "false",
+    returnGeometry = "true",
+    outSR = "4326",
     f = "json"
   )
-  
-  # If the URL is a dynamic url then a layer needs to be specified
-  if (str_detect("dynamicLayer", url)) {
+
+  # Dynamic layer queries require the layer JSON object
+  if (isDynamicQuery(url)) {
     body$layer <- layerJson
   }
-  
-  response <- POST(url, body = body, encode = "form")
 
-# Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
+  # Sends a single request to the arcgis API to return both attribute JSON and geometry JSON
+  response <- POST(
+    url,
+    body = body,
+    encode = "form",
+    timeout(120),
+    user_agent("Mozilla/5.0")
+  )
+
+  # Wait until the server gets a response and continues if it is a success or returns an R error if there is some error in the request
   stop_for_status(response)
 
   # Convert from JSON to an R object
   data <- fromJSON(content(response, "text", encoding = "UTF-8"), simplifyVector = FALSE)
 
-  # Convert the returned object to a flat tibble
-  rows <- lapply(data$features, function(feature) {
-    normalizeAttributes(feature$attributes)
-  })
-  
+  # If ArcGIS returns an error, stop and print that message
+  if (!is.null(data$error)) {
+    stop(data$error$message)
+  }
+
   # Sometimes the server returns empty objects if an object ID doesn't actually exist
   if (is.null(data$features) || length(data$features) == 0) {
     return(tibble())
   }
-  
+
+  # Convert the returned object to a flat data frame, preserving both attributes and geometry
+  rows <- lapply(data$features, function(feature) {
+    attrs <- normalizeAttributes(feature$attributes)
+
+    if (is.null(attrs)) {
+      return(NULL)
+    }
+
+    # Save the full ArcGIS geometry object as JSON text
+    attrs$geometry_json <- if (is.null(feature$geometry)) {
+      NA_character_
+    } else {
+      as.character(toJSON(feature$geometry, auto_unbox = TRUE, null = "null"))
+    }
+
+    attrs
+  })
+
   # Filter out rows that are empty
   rows <- Filter(Negate(is.null), rows)
 
@@ -151,27 +261,33 @@ fetchChunk <- function(url, chunk_id, out_fields, layerJson) {
   if (length(rows) == 0) {
     return(tibble())
   }
-  
+
   # Combine all the rows into a data frame and return it
   bind_rows(rows)
 }
 
-# Save a tibble to memory to allow for acontinuous data collection
+# Save a data frame to memory to allow for continuous data collection
 saveChunk <- function(df, chunk_id, save_directory) {
   # File path to save
   file_path <- file.path(save_directory, sprintf("chunk_%05d.rds", chunk_id))
-  
+
   # Save the file as a .rds file
   saveRDS(df, file_path)
-  
+
   # Return the file path of the saved file
   file_path
 }
 
+# Combine all saved chunks into one data frame
 combineChunks <- function(save_directory) {
   # Find all the files in the specified save directory
   files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$", full.names = TRUE)
-  
+
+  # If there are no files return an empty tibble
+  if (length(files) == 0) {
+    return(tibble())
+  }
+
   # Combine the files into 1 data frame
   bind_rows(lapply(files, readRDS))
 }
@@ -250,24 +366,414 @@ fetchParcels <- function(key, url, batch_size = 1000, out_fields = "*", save_dir
 }
 ```
 
-Main Loop
+Main Functions
 ```{r}
-# Main function to actually download all of the parcel IDs
+# Main function to download all of the parcel data and geometry
+fetchParcels <- function(url, layer_id, batch_size = 1000, out_fields = "*", save_directory) {
+  # Create a directory, showWarnings = FALSE makes it not show an error if the directory already exists and simply move on
+  dir.create(save_directory, showWarnings = FALSE, recursive = TRUE)
+
+  # Construct the layer JSON for dynamic queries
+  layerJson <- makeLayerJson(layer_id)
+
+  # Get the IDs from the requested county
+  ids <- getObjectIDs(url, layerJson)
+  total_ids <- length(ids)
+
+  # Split the object IDs into chunks. Arcgis usually allows for processing of 1000-2000 object IDs in parallel
+  chunks <- split(ids, ceiling(seq_along(ids) / batch_size))
+  total_chunks <- length(chunks)
+
+  # Print some information about the data set size
+  message("Total parcel IDs: ", total_ids)
+  message("Batch size: ", batch_size)
+  message("Total chunks: ", total_chunks)
+
+  # Find the completed chunks so that data isn't collected twice
+  completed_files <- list.files(save_directory, pattern = "^chunk_[0-9]{5}\\.rds$")
+  completed_ids <- as.integer(gsub("^chunk_([0-9]{5})\\.rds$", "\\1", completed_files))
+  completed_ids <- completed_ids[!is.na(completed_ids)]
+
+  # Find the completed IDs so that data isn't collected twice
+  already_done_ids <- sum(vapply(
+    seq_along(chunks),
+    function(i) if (i %in% completed_ids) length(chunks[[i]]) else 0L,
+    integer(1)
+  ))
+
+  # Create a progress bar to show how much of the data has been collected
+  progress_bar <- txtProgressBar(min = 0, max = total_ids, style = 3)
+  setTxtProgressBar(progress_bar, already_done_ids)
+
+  # Loop through all of the chunks in the chunks object
+  for (i in seq_along(chunks)) {
+    # Create the file if it doesn't exist
+    chunk_file <- file.path(save_directory, sprintf("chunk_%05d.rds", i))
+
+    # If the file does exist move along so not overwriting data
+    if (file.exists(chunk_file)) {
+      next
+    }
+
+    # Part of the progress bar
+    message("\nProcessing chunk ", i, " of ", total_chunks)
+
+    # Fetch the chunk
+    chunk_df <- tryCatch(
+      fetchChunk(url, chunks[[i]], out_fields = out_fields, layerJson = layerJson),
+      error = function(e) {
+        message("Chunk ", i, " failed: ", conditionMessage(e))
+        return(NULL)
+      }
+    )
+
+    # If the fetch was successful and returned data save it to file
+    if (!is.null(chunk_df)) {
+      saveChunk(chunk_df, i, save_directory)
+    }
+
+    # Part of the progress bar
+    done_ids <- sum(vapply(
+      seq_along(chunks),
+      function(j) {
+        f <- file.path(save_directory, sprintf("chunk_%05d.rds", j))
+        if (file.exists(f)) length(chunks[[j]]) else 0L
+      },
+      integer(1)
+    ))
+
+    # Part of the progress bar
+    setTxtProgressBar(progress_bar, done_ids)
+  }
+
+  # End the progress bar
+  close(progress_bar)
+
+  # Return the combined county data
+  combineChunks(save_directory)
+}
+
+
+# Get the first 5 entries for one county as sf data
+fetchFirstFiveSF <- function(url, layer_id, out_fields = "*") {
+  # Construct the layer JSON for dynamic queries
+  layerJson <- makeLayerJson(layer_id)
+
+  # Get the IDs from the requested county
+  ids <- getObjectIDs(url, layerJson)
+
+  # Keep only the first 5 IDs
+  sample_ids <- ids
+
+  # Fetch the first 5 entries as sf data
+  fetchChunk(url, sample_ids, out_fields = out_fields, layerJson = layerJson)
+}
+```
+
+Loop Through Counties
+```{r}
 for (key in names(urls)) {
-  
-  # Construct a JSON object with the layer of interest on the arcgis map
-  layerJson <- toJSON(
-    list(source = list(type = "mapLayer", mapLayerId = urls[[key]][[2]])),
-    auto_unbox = TRUE
+  message("\nStarting county: ", key)
+
+  parcels_df <- fetchParcels(
+    url = urls[[key]]$url,
+    layer_id = urls[[key]]$layer,
+    batch_size = 1000,
+    out_fields = "*",
+    save_directory = str_c("Data2/", key, "_parcel_chunks")
+  )
+
+  saveRDS(parcels_df, str_c("Data2/", key, "_parcels_with_geometry.rds"))
+}
+
+
+for (key in names(urls)) {
+  save_directory = str_c("Data/",key,"_parcel_chunks")
+  combineChunks(save_directory)
+  print(key)
+}
+```
+
+```{r}
+makeSampleChoropleth <- function(sf_object, county_name, output_file) {
+  # Return NULL if there is nothing to map
+  if (is.null(sf_object) || nrow(sf_object) == 0) {
+    message("No sf data found for ", county_name)
+    return(NULL)
+  }
+
+  # Transform the geometry to WGS84 for leaflet
+  sf_object <- sf::st_transform(sf_object, 4326)
+
+  # Pick a field for the choropleth
+  fill_col <- pickChoroplethColumn(sf_object)
+
+  # If no numeric field exists, make a fake index so the parcels still display
+  if (is.null(fill_col)) {
+    sf_object$map_value <- seq_len(nrow(sf_object))
+    fill_col <- "map_value"
+  }
+
+  # Convert the map field to numeric for coloring
+  sf_object[[fill_col]] <- as.numeric(sf_object[[fill_col]])
+
+  # Create a color palette for the selected field
+  pal <- colorNumeric(
+    palette = "viridis",
+    domain = sf_object[[fill_col]],
+    na.color = "transparent"
+  )
+
+  # Create labels for the map
+  labels <- paste0(
+    county_name,
+    "<br>",
+    fill_col,
+    ": ",
+    sf_object[[fill_col]]
+  )
+
+  # Make the choropleth map
+  map <- leaflet(sf_object) |>
+    addTiles() |>
+    addPolygons(
+      fillColor = ~pal(.data[[fill_col]]),
+      color = "black",
+      weight = 1,
+      opacity = 1,
+      fillOpacity = 0.65,
+      label = lapply(labels, htmltools::HTML)
+    ) |>
+    addLegend(
+      pal = pal,
+      values = sf_object[[fill_col]],
+      title = fill_col
+    )
+
+  # Save the map to an html file
+  htmlwidgets::saveWidget(map, output_file, selfcontained = TRUE)
+
+  # Return the map object
+  map
+}
+
+# Pick a numeric column for the choropleth map
+pickChoroplethColumn <- function(sf_object) {
+  # Drop the geometry to inspect only attribute data
+  attrs <- sf::st_drop_geometry(sf_object)
+
+  # Find columns that are already numeric
+  numeric_cols <- names(attrs)[vapply(attrs, is.numeric, logical(1))]
+
+  # If there are numeric columns, use the first one
+  if (length(numeric_cols) > 0) {
+    return(numeric_cols[1])
+  }
+
+  # Find character columns that look numeric
+  possible_numeric_cols <- names(attrs)[vapply(attrs, function(x) {
+    non_na <- x[!is.na(x)]
+    length(non_na) > 0 && all(str_detect(as.character(non_na), "^-?[0-9]+(\\.[0-9]+)?$"))
+  }, logical(1))]
+
+  # If there are numeric-looking columns, convert and use the first one
+  if (length(possible_numeric_cols) > 0) {
+    return(possible_numeric_cols[1])
+  }
+
+  # If no usable column exists, return NULL
+  NULL
+}
+```
+
+```{r}
+arcgisPolygonToSF <- function(geometry_json) {
+  geom <- fromJSON(geometry_json, simplifyVector = FALSE)
+
+  if (is.null(geom$rings)) {
+    return(NULL)
+  }
+
+  rings <- lapply(geom$rings, function(ring) {
+    coords <- do.call(rbind, ring)
+    coords <- matrix(as.numeric(coords), ncol = 2, byrow = FALSE)
+
+    # Close ring if needed
+    if (!all(coords[1, ] == coords[nrow(coords), ])) {
+      coords <- rbind(coords, coords[1, ])
+    }
+
+    coords
+  })
+
+  st_polygon(rings)
+}
+
+geoms <- lapply(aitkin_parcels_with_geometry$geometry_json, arcgisPolygonToSF)
+
+valid <- !sapply(geoms, is.null)
+
+parcels_sf <- st_sf(
+  aitkin_parcels_with_geometry[valid, ],
+  geometry = st_sfc(geoms[valid], crs = 4326)
+)
+
+parcels_sf |>
+  select(TAO_NAME, geometry) |>
+  ggplot() +
+  geom_sf(aes(), colour = "white", linetype = 2) + 
+  theme_void() +  
+  scale_fill_brewer(palette = "YlOrRd") 
+
+labels <- lapply(aitkin_parcels_with_geometry$TAO_NAME, HTML)
+
+leaflet(parcels_sf) |>
+  addTiles() |>
+  addPolygons(
+    label = labels
   )
   
-  parcels_df <- fetchParcels(
-    key,
-    urls[[key]][[1]],
-    batch_size = 1000, # 1000 is the max value allowed by arcgis, can be changed to be lower for testing
-    out_fields = "*", # Delimtiter value
-    save_directory = str_c("Data/",key,"_parcel_chunks"), # Directory to save items
-    layerJson
+```
+
+```{r}
+test_url <- urls$douglas$url
+
+response <- POST(
+  test_url,
+  body = list(
+    where = "1=1",
+    returnIdsOnly = "true",
+    f = "json"
+  ),
+  encode = "form",
+  timeout(120),
+  user_agent("Mozilla/5.0")
+)
+charToRaw(urls$douglas$url)
+
+urls$douglas$url <- paste0(
+  "https://services2.arcgis.com/",
+  "CfhoRi2v351nuUH7",
+  "/arcgis/rest/services/",
+  "DC_OL_DCPIAdvanced_AGOLX",
+  "/FeatureServer/6/query"
+)
+
+status_code(response)
+content(response, "text", encoding = "UTF-8")
+```
+
+
+
+
+
+
+
+```{r}
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0) y else x
+}
+
+# Remove /query from the URL so metadata can be requested
+getMetadataURL <- function(query_url) {
+  str_replace(query_url, "/query$", "")
+}
+
+# Check whether a county supports historical ownership or geometry
+checkHistoricalSupport <- function(county_name, url) {
+  metadata_url <- getMetadataURL(url)
+
+  response <- GET(
+    metadata_url,
+    query = list(f = "json"),
+    timeout(120),
+    user_agent("Mozilla/5.0")
+  )
+
+  stop_for_status(response)
+
+  metadata <- fromJSON(
+    content(response, "text", encoding = "UTF-8"),
+    simplifyVector = FALSE
+  )
+
+  # Field metadata
+  fields <- metadata$fields
+
+  field_names <- vapply(
+    fields,
+    function(x) x$name %||% NA_character_,
+    character(1)
+  )
+
+  field_types <- vapply(
+    fields,
+    function(x) x$type %||% NA_character_,
+    character(1)
+  )
+
+  # Date fields
+  date_fields <- field_names[field_types == "esriFieldTypeDate"]
+
+  # Fields that imply ownership history
+  history_fields <- grep(
+    "SALE|DEED|OWNER|OWN|TRANSFER|DATE|YEAR|YR|EDIT|CREATE|UPDATE|HIST",
+    field_names,
+    ignore.case = TRUE,
+    value = TRUE
+  )
+
+  # ArcGIS historical support
+  has_time_info <- !is.null(metadata$timeInfo)
+
+  supports_historic_moment <-
+    metadata$advancedQueryCapabilities$supportsQueryWithHistoricMoment %||% FALSE
+
+  supports_statistics <-
+    metadata$advancedQueryCapabilities$supportsStatistics %||% FALSE
+
+  tibble(
+    county = county_name,
+    layer_name = metadata$name %||% NA_character_,
+    geometry_type = metadata$geometryType %||% NA_character_,
+    has_timeInfo = has_time_info,
+    supports_historic_moment = supports_historic_moment,
+    has_date_fields = length(date_fields) > 0,
+    date_fields = paste(date_fields, collapse = ", "),
+    possible_history_fields = paste(history_fields, collapse = ", "),
+    max_record_count = metadata$maxRecordCount %||% NA_integer_
   )
 }
 ```
+
+```{r}
+history_support <- bind_rows(
+  lapply(names(urls), function(key) {
+    tryCatch(
+      checkHistoricalSupport(
+        county_name = key,
+        url = urls[[key]]$url
+      ),
+      error = function(e) {
+        tibble(
+          county = key,
+          layer_name = NA_character_,
+          geometry_type = NA_character_,
+          has_timeInfo = NA,
+          supports_historic_moment = NA,
+          has_date_fields = NA,
+          date_fields = NA_character_,
+          possible_history_fields = paste(
+            "FAILED:",
+            conditionMessage(e)
+          ),
+          max_record_count = NA_integer_
+        )
+      }
+    )
+  })
+)
+
+history_support
+```
+
